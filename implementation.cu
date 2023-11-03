@@ -2,29 +2,30 @@
 
 #include "stdio.h"
 
-void printSubmissionInfo()
-{
-    // This will be published in the leaderboard on piazza
-    // Please modify this field with something interesting
-    char nick_name[] = "default-team";
+void printSubmissionInfo() {
+  // This will be published in the leaderboard on piazza
+  // Please modify this field with something interesting
+  char nick_name[] = "Penghui Zhu Steven";
 
-    // Please fill in your information (for marking purposes only)
-    char student_first_name[] = "John";
-    char student_last_name[] = "Doe";
-    char student_student_number[] = "00000000";
+  // Please fill in your information (for marking purposes only)
+  char student_first_name[] = "Penghui";
+  char student_last_name[] = "Zhu";
+  char student_student_number[] = "1009763551";
 
-    // Printing out team information
-    printf("*******************************************************************************************************\n");
-    printf("Submission Information:\n");
-    printf("\tnick_name: %s\n", nick_name);
-    printf("\tstudent_first_name: %s\n", student_first_name);
-    printf("\tstudent_last_name: %s\n", student_last_name);
-    printf("\tstudent_student_number: %s\n", student_student_number);
+  // Printing out team information
+  printf("*********************************************************************"
+         "**********************************\n");
+  printf("Submission Information:\n");
+  printf("\tnick_name: %s\n", nick_name);
+  printf("\tstudent_first_name: %s\n", student_first_name);
+  printf("\tstudent_last_name: %s\n", student_last_name);
+  printf("\tstudent_student_number: %s\n", student_student_number);
 }
 
 /**
- * Implement your CUDA inclusive scan here. Feel free to add helper functions, kernels or allocate temporary memory.
- * However, you must not modify other files. CAUTION: make sure you synchronize your kernels properly and free all
+ * Implement your CUDA inclusive scan here. Feel free to add helper functions,
+ * kernels or allocate temporary memory. However, you must not modify other
+ * files. CAUTION: make sure you synchronize your kernels properly and free all
  * allocated memory.
  *
  * @param d_input: input array on device
