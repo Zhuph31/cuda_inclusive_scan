@@ -84,10 +84,21 @@ int main(int argc, char *argv[])
     std::fill(reference_output.begin(), reference_output.end(), 0);
     std::fill(student_output.begin(), student_output.end(), 0);
 
+    printf("intput:\n");
+    for (size_t i = 0; i < 10; ++i) {
+        printf("%d,", input[i]);
+    }
+
     referenceImplementation(input.data(), reference_output.data(), input_size);
     implementation(d_input, d_output, input_size);
     gpu_err_check(
         cudaMemcpyAsync(student_output.data(), d_output, input_size * sizeof(int32_t), cudaMemcpyDeviceToHost, stream));
+
+    printf("\noutput:\n");
+    for (size_t i = 0; i < 10; ++i) {
+        printf("%d,", student_output[i]);
+    }
+
     gpu_err_check(cudaStreamSynchronize(stream));
     gpu_err_check(cudaFree(d_input));
     gpu_err_check(cudaFree(d_output));
