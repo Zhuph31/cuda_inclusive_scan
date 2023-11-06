@@ -27,7 +27,9 @@ int main(int argc, char *argv[])
     bool grade_mode = false;
 
     int opt;
-    while ((opt = getopt(argc, argv, "gh")) != -1)
+    size_t size = 100;
+
+    while ((opt = getopt(argc, argv, "ghs:")) != -1)
     {
         switch (opt)
         {
@@ -37,6 +39,9 @@ int main(int argc, char *argv[])
         case 'h':
             printHelp(argv);
             return 0;
+        case 's':
+            size = atoi(optarg);
+            break;
         default:
             std::cerr << "Unknown option: " << opt << "\n";
             printHelp(argv);
@@ -48,7 +53,9 @@ int main(int argc, char *argv[])
     printf("*******************************************************************************************************\n");
 
     /* generate input */
-    constexpr size_t input_size = 100000007u;
+    // constexpr size_t input_size = 100000007u;
+    size_t input_size = size;
+    printf("size is %lu\n", input_size);
     std::vector<int32_t> input(input_size);
     std::vector<int32_t> reference_output(input_size);
     std::vector<int32_t> student_output(input_size);
@@ -84,20 +91,10 @@ int main(int argc, char *argv[])
     std::fill(reference_output.begin(), reference_output.end(), 0);
     std::fill(student_output.begin(), student_output.end(), 0);
 
-    printf("intput:\n");
-    for (size_t i = 0; i < 10; ++i) {
-        printf("%d,", input[i]);
-    }
-
     referenceImplementation(input.data(), reference_output.data(), input_size);
     implementation(d_input, d_output, input_size);
     gpu_err_check(
         cudaMemcpyAsync(student_output.data(), d_output, input_size * sizeof(int32_t), cudaMemcpyDeviceToHost, stream));
-
-    printf("\noutput:\n");
-    for (size_t i = 0; i < 10; ++i) {
-        printf("%d,", student_output[i]);
-    }
 
     gpu_err_check(cudaStreamSynchronize(stream));
     gpu_err_check(cudaFree(d_input));
