@@ -272,28 +272,12 @@ void scanLargeDeviceArray(int *output, int *input, int length, bool bcao);
 void scanSmallDeviceArray(int *d_out, int *d_in, int length, bool bcao);
 void scanLargeEvenDeviceArray(int *output, int *input, int length, bool bcao);
 
-float scan(int *output, int *input, int length, bool bcao) {
-  const int arraySize = length * sizeof(int);
-
-  // start timer
-  cudaEvent_t start, stop;
-  cudaEventCreate(&start);
-  cudaEventCreate(&stop);
-  cudaEventRecord(start);
-
+void scan(int *output, int *input, int length, bool bcao) {
   if (length > ELEMENTS_PER_BLOCK) {
     scanLargeDeviceArray(output, input, length, bcao);
   } else {
     scanSmallDeviceArray(output, input, length, bcao);
   }
-
-  // end timer
-  cudaEventRecord(stop);
-  cudaEventSynchronize(stop);
-  float elapsedTime = 0;
-  cudaEventElapsedTime(&elapsedTime, start, stop);
-
-  return elapsedTime;
 }
 
 void scanLargeDeviceArray(int *d_out, int *d_in, int length, bool bcao) {
@@ -374,6 +358,5 @@ void scanLargeEvenDeviceArray(int *d_out, int *d_in, int length, bool bcao) {
  */
 void implementation(const int32_t *d_input, int32_t *d_output, size_t size) {
   int32_t *input = const_cast<int32_t *>(d_input);
-  printf("calling parllel implementation, size:%lu\n", size);
   scan(d_output, input, size, false);
 }
