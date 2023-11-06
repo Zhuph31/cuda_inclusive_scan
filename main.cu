@@ -108,6 +108,16 @@ int main(int argc, char *argv[])
     else
     {
         std::cerr << "Your implementation is incorrect." << std::endl;
+        for (size_t i = 0; i < reference_output.size(); ++i) {
+            // if (reference_output[i] != student_output[i]) {
+            if (true) {
+              std::cout << "Position " << i << ": " << reference_output[i]
+                        << " (Reference) vs. " << student_output[i]
+                        << " (Student), ";
+              int diff = reference_output[i] - student_output[i];
+              std::cout << "Difference: " << diff << std::endl;
+            }
+        }
         exit(-1);
     }
 
