@@ -28,8 +28,9 @@ int main(int argc, char *argv[])
 
     int opt;
     size_t size = 100;
+    bool debug = false;
 
-    while ((opt = getopt(argc, argv, "ghs:")) != -1)
+    while ((opt = getopt(argc, argv, "ghs:d")) != -1)
     {
         switch (opt)
         {
@@ -41,6 +42,9 @@ int main(int argc, char *argv[])
             return 0;
         case 's':
             size = atoi(optarg);
+            break;
+        case 'd':
+            debug = true;
             break;
         default:
             std::cerr << "Unknown option: " << opt << "\n";
@@ -101,21 +105,21 @@ int main(int argc, char *argv[])
     gpu_err_check(cudaFree(d_output));
     gpu_err_check(cudaStreamDestroy(stream));
 
-    if (std::equal(reference_output.begin(), reference_output.end(), student_output.begin()))
-    {
+    if (std::equal(reference_output.begin(), reference_output.end(),
+                   student_output.begin())) {
         std::cout << "Your implementation is correct." << std::endl;
-    }
-    else
-    {
+    } else {
         std::cerr << "Your implementation is incorrect." << std::endl;
-        for (size_t i = 0; i < reference_output.size(); ++i) {
-            // if (reference_output[i] != student_output[i]) {
-            if (true) {
-              std::cout << "Position " << i << ": " << reference_output[i]
-                        << " (Reference) vs. " << student_output[i]
-                        << " (Student), ";
-              int diff = reference_output[i] - student_output[i];
-              std::cout << "Difference: " << diff << std::endl;
+        if (debug) {
+            for (size_t i = 0; i < reference_output.size(); ++i) {
+              // if (reference_output[i] != student_output[i]) {
+              if (true) {
+                std::cout << "Position " << i << ": " << reference_output[i]
+                          << " (Reference) vs. " << student_output[i]
+                          << " (Student), ";
+                int diff = reference_output[i] - student_output[i];
+                std::cout << "Difference: " << diff << std::endl;
+              }
             }
         }
         exit(-1);

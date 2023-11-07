@@ -1,6 +1,7 @@
 #include "implementation.h"
 
 #include "stdio.h"
+#include <cmath>
 #include <cstdint>
 
 void printSubmissionInfo() {
@@ -101,8 +102,10 @@ __global__ void prescan_arbitrary_unoptimized(int *output, int *input, int n,
                                               int powerOfTwo) {
   extern __shared__ int temp[]; // allocated on invocation
   int threadID = threadIdx.x;
+  // printf("scan small, n:%d\n", n);
 
   if (threadID < n) {
+    // printf("doing copy, thread:%d\n", threadID);
     temp[2 * threadID] = input[2 * threadID]; // load input into shared memory
     temp[2 * threadID + 1] = input[2 * threadID + 1];
   } else {
@@ -127,6 +130,8 @@ __global__ void prescan_arbitrary_unoptimized(int *output, int *input, int n,
     temp[powerOfTwo - 1] = 0;
   } // clear the last element
 
+  // printf("offset:%d, pot:%d\n", offset, powerOfTwo);
+
   for (int d = 1; d < powerOfTwo; d *= 2) // traverse down tree & build scan
   {
     offset >>= 1;
@@ -134,6 +139,10 @@ __global__ void prescan_arbitrary_unoptimized(int *output, int *input, int n,
     if (threadID < d) {
       int ai = offset * (2 * threadID + 1) - 1;
       int bi = offset * (2 * threadID + 2) - 1;
+      // if (threadID == 0) {
+      // printf("threadID:%d, offset:%d, ai:%d, bi:%d\n", threadID, offset, ai,
+      //        bi);
+      // }
       int t = temp[ai];
       temp[ai] = temp[bi];
       temp[bi] += t;
@@ -249,24 +258,27 @@ __global__ void prescan_large_unoptimized(int *output, int *input, int n,
   output[blockOffset + (2 * threadID) + 1] = temp[2 * threadID + 1];
 }
 
+int THREADS_PER_BLOCK = 1024;
+int ELEMENTS_PER_BLOCK = THREADS_PER_BLOCK * 2;
+
 __global__ void add(int *output, int length, int *n) {
   int blockID = blockIdx.x;
   int threadID = threadIdx.x;
   int blockOffset = blockID * length;
 
-  output[blockOffset + threadID] += n[blockID];
+  output[blockOffset + threadID] += n[blockID / 2];
 }
 
 __global__ void add(int *output, int length, int *n1, int *n2) {
   int blockID = blockIdx.x;
   int threadID = threadIdx.x;
-  int blockOffset = blockID * length;
+  int blockOffset = blockID * 1024;
 
-  output[blockOffset + threadID] += n1[blockID] + n2[blockID];
+  int idx = blockOffset + threadID;
+  if (idx < length) {
+    output[idx] += *n1 + *n2;
+  }
 }
-
-int THREADS_PER_BLOCK = 1024;
-int ELEMENTS_PER_BLOCK = THREADS_PER_BLOCK * 2;
 
 void scanLargeDeviceArray(int *output, int *input, int length, bool bcao);
 void scanSmallDeviceArray(int *d_out, int *d_in, int length, bool bcao);
@@ -274,6 +286,7 @@ void scanLargeEvenDeviceArray(int *output, int *input, int length, bool bcao);
 
 void scan(int *output, int *input, int length, bool bcao) {
   if (length > ELEMENTS_PER_BLOCK) {
+    printf("scan large\n");
     scanLargeDeviceArray(output, input, length, bcao);
   } else {
     scanSmallDeviceArray(output, input, length, bcao);
@@ -282,6 +295,7 @@ void scan(int *output, int *input, int length, bool bcao) {
 
 void scanLargeDeviceArray(int *d_out, int *d_in, int length, bool bcao) {
   int remainder = length % (ELEMENTS_PER_BLOCK);
+  printf("scanning large, length:%d, remainder:%d\n", length, remainder);
   if (remainder == 0) {
     scanLargeEvenDeviceArray(d_out, d_in, length, bcao);
   } else {
@@ -295,9 +309,11 @@ void scanLargeDeviceArray(int *d_out, int *d_in, int length, bool bcao) {
     scanSmallDeviceArray(startOfOutputArray, &(d_in[lengthMultiple]), remainder,
                          bcao);
 
-    add<<<1, remainder>>>(startOfOutputArray, remainder,
-                          &(d_in[lengthMultiple - 1]),
-                          &(d_out[lengthMultiple - 1]));
+    int blocks = std::ceil(double(remainder) / THREADS_PER_BLOCK);
+    printf("doing final add, lengthMultiple:%d, blocks:%d\n", lengthMultiple, blocks);
+    add<<<blocks, THREADS_PER_BLOCK>>>(startOfOutputArray, remainder,
+                                       &(d_in[lengthMultiple - 1]),
+                                       &(d_out[lengthMultiple - 1]));
   }
 }
 
@@ -340,7 +356,12 @@ void scanLargeEvenDeviceArray(int *d_out, int *d_in, int length, bool bcao) {
     scanSmallDeviceArray(d_incr, d_sums, blocks, bcao);
   }
 
-  add<<<blocks, ELEMENTS_PER_BLOCK>>>(d_out, ELEMENTS_PER_BLOCK, d_incr);
+  add<<<length / THREADS_PER_BLOCK, THREADS_PER_BLOCK>>>(
+      d_out, THREADS_PER_BLOCK, d_incr);
+
+  // add<<<blocks, THREADS_PER_BLOCK>>>(startOfOutputArray, remainder,
+  //  &(d_in[lengthMultiple - 1]),
+  //  &(d_out[lengthMultiple - 1]));
 
   cudaFree(d_sums);
   cudaFree(d_incr);
