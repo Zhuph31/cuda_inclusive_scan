@@ -258,7 +258,7 @@ __global__ void prescan_large_unoptimized(int *output, int *input, int n,
   output[blockOffset + (2 * threadID) + 1] = temp[2 * threadID + 1];
 }
 
-int THREADS_PER_BLOCK = 1024;
+int THREADS_PER_BLOCK = 512;
 int ELEMENTS_PER_BLOCK = THREADS_PER_BLOCK * 2;
 
 __global__ void add(int *output, int length, int *n) {
@@ -286,7 +286,7 @@ void scanLargeEvenDeviceArray(int *output, int *input, int length, bool bcao);
 
 void scan(int *output, int *input, int length, bool bcao) {
   if (length > ELEMENTS_PER_BLOCK) {
-    printf("scan large\n");
+    // printf("scan large\n");
     scanLargeDeviceArray(output, input, length, bcao);
   } else {
     scanSmallDeviceArray(output, input, length, bcao);
@@ -295,7 +295,7 @@ void scan(int *output, int *input, int length, bool bcao) {
 
 void scanLargeDeviceArray(int *d_out, int *d_in, int length, bool bcao) {
   int remainder = length % (ELEMENTS_PER_BLOCK);
-  printf("scanning large, length:%d, remainder:%d\n", length, remainder);
+  // printf("scanning large, length:%d, remainder:%d\n", length, remainder);
   if (remainder == 0) {
     scanLargeEvenDeviceArray(d_out, d_in, length, bcao);
   } else {
@@ -310,7 +310,7 @@ void scanLargeDeviceArray(int *d_out, int *d_in, int length, bool bcao) {
                          bcao);
 
     int blocks = std::ceil(double(remainder) / THREADS_PER_BLOCK);
-    printf("doing final add, lengthMultiple:%d, blocks:%d\n", lengthMultiple, blocks);
+    // printf("doing final add, lengthMultiple:%d, blocks:%d\n", lengthMultiple, blocks);
     add<<<blocks, THREADS_PER_BLOCK>>>(startOfOutputArray, remainder,
                                        &(d_in[lengthMultiple - 1]),
                                        &(d_out[lengthMultiple - 1]));
@@ -379,5 +379,5 @@ void scanLargeEvenDeviceArray(int *d_out, int *d_in, int length, bool bcao) {
  */
 void implementation(const int32_t *d_input, int32_t *d_output, size_t size) {
   int32_t *input = const_cast<int32_t *>(d_input);
-  scan(d_output, input, size, false);
+  scan(d_output, input, size, true);
 }
