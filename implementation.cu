@@ -265,7 +265,7 @@ __global__ void add(int *output, int length, int *n1, int *n2) {
   output[blockOffset + threadID] += n1[blockID] + n2[blockID];
 }
 
-int THREADS_PER_BLOCK = 1024;
+int THREADS_PER_BLOCK = 256;
 int ELEMENTS_PER_BLOCK = THREADS_PER_BLOCK * 2;
 
 void scanLargeDeviceArray(int *output, int *input, int length, bool bcao);
@@ -273,8 +273,6 @@ void scanSmallDeviceArray(int *d_out, int *d_in, int length, bool bcao);
 void scanLargeEvenDeviceArray(int *output, int *input, int length, bool bcao);
 
 float scan(int *output, int *input, int length, bool bcao) {
-  const int arraySize = length * sizeof(int);
-
   // start timer
   cudaEvent_t start, stop;
   cudaEventCreate(&start);
@@ -374,6 +372,5 @@ void scanLargeEvenDeviceArray(int *d_out, int *d_in, int length, bool bcao) {
  */
 void implementation(const int32_t *d_input, int32_t *d_output, size_t size) {
   int32_t *input = const_cast<int32_t *>(d_input);
-  printf("calling parllel implementation, size:%lu\n", size);
   scan(d_output, input, size, true);
 }
