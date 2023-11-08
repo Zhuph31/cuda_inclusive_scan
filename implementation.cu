@@ -375,5 +375,5 @@ void scanLargeEvenDeviceArray(int *d_out, int *d_in, int length, bool bcao) {
 void implementation(const int32_t *d_input, int32_t *d_output, size_t size) {
   int32_t *input = const_cast<int32_t *>(d_input);
   printf("calling parllel implementation, size:%lu\n", size);
-  scan(d_output, input, size, false);
+  scan(d_output, input, size, true);
 }
