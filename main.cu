@@ -34,10 +34,10 @@ int main(int argc, char *argv[]) {
   //       cudaSharedMemConfig::cudaSharedMemBankSizeEightByte);
 
   bool grade_mode = false;
-  bool exclusive = false;
+  bool exclusive = false, print = false;
 
   int opt;
-  while ((opt = getopt(argc, argv, "ghe")) != -1) {
+  while ((opt = getopt(argc, argv, "ghep")) != -1) {
     switch (opt) {
     case 'g':
       grade_mode = true;
@@ -47,6 +47,9 @@ int main(int argc, char *argv[]) {
       return 0;
     case 'e':
       exclusive = true;
+      break;
+    case 'p':
+      print = true;
       break;
     default:
       std::cerr << "Unknown option: " << opt << "\n";
@@ -61,6 +64,7 @@ int main(int argc, char *argv[]) {
 
   /* generate input */
   constexpr size_t input_size = 100000007u;
+  // constexpr size_t input_size = 10;
   std::vector<int32_t> input(input_size);
   std::vector<int32_t> reference_output(input_size);
   std::vector<int32_t> student_output(input_size);
@@ -120,6 +124,20 @@ int main(int argc, char *argv[]) {
     std::cout << "Your implementation is correct." << std::endl;
   } else {
     std::cerr << "Your implementation is incorrect." << std::endl;
+    if (print) {
+      for (int i = 0; i < input_size; ++i) {
+        printf("%d,", input[i]);
+      }
+      printf("\n");
+      for (int i = 0; i < input_size; ++i) {
+        printf("%d,", reference_output[i]);
+      }
+      printf("\n");
+      for (int i = 0; i < input_size; ++i) {
+        printf("%d,", student_output[i]);
+      }
+      printf("\n");
+    }
     exit(-1);
   }
 
