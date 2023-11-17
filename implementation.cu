@@ -2,6 +2,7 @@
 
 #include "stdio.h"
 #include <cstdint>
+#include <driver_types.h>
 
 void printSubmissionInfo() {
   // This will be published in the leaderboard on piazza
@@ -158,10 +159,16 @@ __global__ void add(int *output, const int *n1, const int *n2) {
 }
 
 __global__ void exclusive_to_inclusive(int *output, const int *input,
-                                       int block_length) {
-  // int thread_id = threadIdx.x;
-  // int block_id = blockIdx.x;
-  // int pos = block_id * length + thread_id;
+                                       int block_elem, int length,
+                                       int last_elem) {
+  int thread_id = threadIdx.x;
+  int block_id = blockIdx.x;
+  int pos = block_id * block_elem + thread_id;
+  if (pos < length - 1) {
+    output[pos] = input[pos + 1];
+  } else if (pos == length - 1) {
+    output[pos] = input[pos] + last_elem;
+  }
 }
 
 void scan_small(int *output, const int *input, int length) {
@@ -175,21 +182,21 @@ void scan_equal(int *output, const int *input, int length) {
   const int blocks = length / block_elems;
   const int sharedMemSize = block_elems * sizeof(int);
 
-  int *d_sums, *d_incr;
-  cudaMalloc((void **)&d_sums, blocks * sizeof(int));
-  cudaMalloc((void **)&d_incr, blocks * sizeof(int));
+  int *sums, *incr;
+  cudaMalloc((void **)&sums, blocks * sizeof(int));
+  cudaMalloc((void **)&incr, blocks * sizeof(int));
 
   prescan_large<<<blocks, block_threads, 2 * sharedMemSize>>>(
-      output, input, block_elems, d_sums);
+      output, input, block_elems, sums);
   if ((blocks + 1) / 2 > block_threads) {
-    scan_large(d_incr, d_sums, blocks);
+    scan_large(incr, sums, blocks);
   } else {
-    scan_small(d_incr, d_sums, blocks);
+    scan_small(incr, sums, blocks);
   }
-  add<<<blocks, block_elems>>>(output, block_elems, d_incr);
+  add<<<blocks, block_elems>>>(output, block_elems, incr);
 
-  cudaFree(d_sums);
-  cudaFree(d_incr);
+  cudaFree(sums);
+  cudaFree(incr);
 }
 
 void scan_large(int *output, const int *input, int length) {
@@ -203,14 +210,12 @@ void scan_large(int *output, const int *input, int length) {
   }
 }
 
-void scan(int *output, const int *input, int length) {
+void exclusive_scan(int *output, const int *input, int length) {
   if (length > block_elems) {
     scan_large(output, input, length);
   } else {
     scan_small(output, input, length);
   }
-
-  // transform exclusive to inclusive
 }
 
 /**
@@ -224,5 +229,5 @@ void scan(int *output, const int *input, int length) {
  * @param size: number of elements in the input array
  */
 void implementation(const int32_t *d_input, int32_t *d_output, size_t size) {
-  scan(d_output, d_input, size);
+  exclusive_scan(d_output, d_input, size);
 }
