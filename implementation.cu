@@ -158,32 +158,29 @@ __global__ void add(int *output, int length, const int *n1, const int *n2) {
   output[blockIdx.x * length + threadIdx.x] += n1[blockIdx.x] + n2[blockIdx.x];
 }
 
-void scanSmallDeviceArray(int *d_out, const int *d_in, int length) {
+void scanSmall(int *d_out, const int *d_in, int length) {
   int powerOfTwo = getPowerOfTwo(length);
-
   prescan_arbitrary<<<1, (length + 1) / 2, 2 * powerOfTwo * sizeof(int)>>>(
       d_out, d_in, length, powerOfTwo);
 }
 
-void scanLargeDeviceArray(int *d_out, const int *d_in, int length);
-void scanLargeEvenDeviceArray(int *d_out, const int *d_in, int length) {
+void scanLarge(int *d_out, const int *d_in, int length);
+void scanEqual(int *d_out, const int *d_in, int length) {
   const int blocks = length / ELEMENTS_PER_BLOCK;
-  const int sharedMemArraySize = ELEMENTS_PER_BLOCK * sizeof(int);
+  const int sharedMemSize = ELEMENTS_PER_BLOCK * sizeof(int);
 
   int *d_sums, *d_incr;
   cudaMalloc((void **)&d_sums, blocks * sizeof(int));
   cudaMalloc((void **)&d_incr, blocks * sizeof(int));
 
-  prescan_large<<<blocks, THREADS_PER_BLOCK, 2 * sharedMemArraySize>>>(
+  prescan_large<<<blocks, THREADS_PER_BLOCK, 2 * sharedMemSize>>>(
       d_out, d_in, ELEMENTS_PER_BLOCK, d_sums);
 
-  const int sumsArrThreadsNeeded = (blocks + 1) / 2;
-  if (sumsArrThreadsNeeded > THREADS_PER_BLOCK) {
-    // perform a large scan on the sums arr
-    scanLargeDeviceArray(d_incr, d_sums, blocks);
+  const int sumThreads = (blocks + 1) / 2;
+  if (sumThreads > THREADS_PER_BLOCK) {
+    scanLarge(d_incr, d_sums, blocks);
   } else {
-    // only need one block to scan sums arr so can use small scan
-    scanSmallDeviceArray(d_incr, d_sums, blocks);
+    scanSmall(d_incr, d_sums, blocks);
   }
 
   add<<<blocks, ELEMENTS_PER_BLOCK>>>(d_out, ELEMENTS_PER_BLOCK, d_incr);
@@ -192,32 +189,25 @@ void scanLargeEvenDeviceArray(int *d_out, const int *d_in, int length) {
   cudaFree(d_incr);
 }
 
-void scanLargeDeviceArray(int *d_out, const int *d_in, int length) {
+void scanLarge(int *d_out, const int *d_in, int length) {
   int remainder = length % (ELEMENTS_PER_BLOCK);
   if (remainder == 0) {
-    scanLargeEvenDeviceArray(d_out, d_in, length);
+    scanEqual(d_out, d_in, length);
   } else {
-    // perform a large scan on a compatible multiple of elements
-    int lengthMultiple = length - remainder;
-    scanLargeEvenDeviceArray(d_out, d_in, lengthMultiple);
-
-    // scan the remaining elements and add the (inclusive) last element of the
-    // large scan to this
-    int *startOfOutputArray = &(d_out[lengthMultiple]);
-    scanSmallDeviceArray(startOfOutputArray, &(d_in[lengthMultiple]),
-                         remainder);
-
-    add<<<1, remainder>>>(startOfOutputArray, remainder,
-                          &(d_in[lengthMultiple - 1]),
-                          &(d_out[lengthMultiple - 1]));
+    int evenLength = length - remainder;
+    scanEqual(d_out, d_in, evenLength);
+    scanSmall(&(d_out[evenLength]), &(d_in[evenLength]), remainder);
+    // add the result of the last element to the remainder part
+    add<<<1, remainder>>>(&(d_out[evenLength]), remainder,
+                          &(d_in[evenLength - 1]), &(d_out[evenLength - 1]));
   }
 }
 
 void scan(int *output, const int *input, int length) {
   if (length > ELEMENTS_PER_BLOCK) {
-    scanLargeDeviceArray(output, input, length);
+    scanLarge(output, input, length);
   } else {
-    scanSmallDeviceArray(output, input, length);
+    scanSmall(output, input, length);
   }
 }
 
