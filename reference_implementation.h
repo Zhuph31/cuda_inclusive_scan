@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <cstddef>
 
-void referenceImplementation(const int32_t *h_input, int32_t *h_output, size_t size);
+void referenceImplementation(const int32_t *h_input, int32_t *h_output,
+                             size_t size, bool exclusive);
 
 #endif // REFERENCE_IMPLEMENTATION_H

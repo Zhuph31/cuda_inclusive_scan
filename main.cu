@@ -25,9 +25,10 @@ void printHelp(char *argv[])
 int main(int argc, char *argv[])
 {
     bool grade_mode = false;
+    bool exclusive = false;
 
     int opt;
-    while ((opt = getopt(argc, argv, "gh")) != -1)
+    while ((opt = getopt(argc, argv, "ghe")) != -1)
     {
         switch (opt)
         {
@@ -37,6 +38,9 @@ int main(int argc, char *argv[])
         case 'h':
             printHelp(argv);
             return 0;
+        case 'e':
+            exclusive = true;
+            break;
         default:
             std::cerr << "Unknown option: " << opt << "\n";
             printHelp(argv);
@@ -68,7 +72,8 @@ int main(int argc, char *argv[])
         std::cout << "Performance Results:" << std::endl;
 
         uint32_t reference_time =
-            sampler.sample(referenceImplementation, input.data(), reference_output.data(), input_size);
+            sampler.sample(referenceImplementation, input.data(),
+                           reference_output.data(), input_size, exclusive);
         std::cout << "\tTime consumed by the sequential implementation: " << reference_time << "us" << std::endl;
 
         uint32_t student_time = sampler.sample(implementation, d_input, d_output, input_size);
@@ -84,7 +89,8 @@ int main(int argc, char *argv[])
     std::fill(reference_output.begin(), reference_output.end(), 0);
     std::fill(student_output.begin(), student_output.end(), 0);
 
-    referenceImplementation(input.data(), reference_output.data(), input_size);
+    referenceImplementation(input.data(), reference_output.data(), input_size,
+                            exclusive);
     implementation(d_input, d_output, input_size);
     gpu_err_check(
         cudaMemcpyAsync(student_output.data(), d_output, input_size * sizeof(int32_t), cudaMemcpyDeviceToHost, stream));
