@@ -149,12 +149,19 @@ __global__ void prescan_large(int *output, const int *input, int n, int *sums) {
   output[block_offset + bi] = temp[bi + bank_offset_b];
 }
 
-__global__ void add(int *output, int length, const int *n) {
-  output[blockIdx.x * length + threadIdx.x] += n[blockIdx.x];
+__global__ void add(int *output, int block_elems, const int *n) {
+  output[blockIdx.x * block_elems + threadIdx.x] += n[blockIdx.x];
 }
 
-__global__ void add(int *output, int length, const int *n1, const int *n2) {
-  output[blockIdx.x * length + threadIdx.x] += n1[blockIdx.x] + n2[blockIdx.x];
+__global__ void add(int *output, const int *n1, const int *n2) {
+  output[threadIdx.x] += *n1 + *n2;
+}
+
+__global__ void exclusive_to_inclusive(int *output, const int *input,
+                                       int block_length) {
+  // int thread_id = threadIdx.x;
+  // int block_id = blockIdx.x;
+  // int pos = block_id * length + thread_id;
 }
 
 void scan_small(int *output, const int *input, int length) {
@@ -174,7 +181,6 @@ void scan_equal(int *output, const int *input, int length) {
 
   prescan_large<<<blocks, block_threads, 2 * sharedMemSize>>>(
       output, input, block_elems, d_sums);
-
   if ((blocks + 1) / 2 > block_threads) {
     scan_large(d_incr, d_sums, blocks);
   } else {
@@ -192,8 +198,7 @@ void scan_large(int *output, const int *input, int length) {
   scan_equal(output, input, even_length);
   if (remainder > 0) {
     scan_small(&(output[even_length]), &(input[even_length]), remainder);
-    add<<<1, remainder>>>(&(output[even_length]), remainder,
-                          &(input[even_length - 1]),
+    add<<<1, remainder>>>(&(output[even_length]), &(input[even_length - 1]),
                           &(output[even_length - 1]));
   }
 }
@@ -204,6 +209,8 @@ void scan(int *output, const int *input, int length) {
   } else {
     scan_small(output, input, length);
   }
+
+  // transform exclusive to inclusive
 }
 
 /**
