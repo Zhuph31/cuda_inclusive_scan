@@ -27,8 +27,8 @@ void printSubmissionInfo() {
 #define LOG_NUM_BANKS 5
 #define CONFLICT_FREE_OFFSET(n) ((n) >> LOG_NUM_BANKS)
 
-int THREADS_PER_BLOCK = 256;
-int ELEMENTS_PER_BLOCK = THREADS_PER_BLOCK * 2;
+int block_threads = 256;
+int block_elems = block_threads * 2;
 
 int get_power_of_two(int x) {
   int power = 1;
@@ -157,53 +157,49 @@ __global__ void add(int *output, int length, const int *n1, const int *n2) {
   output[blockIdx.x * length + threadIdx.x] += n1[blockIdx.x] + n2[blockIdx.x];
 }
 
-void scan_small(int *d_out, const int *d_in, int length) {
+void scan_small(int *output, const int *input, int length) {
   int power_of_two = get_power_of_two(length);
   prescan_arbitrary<<<1, (length + 1) / 2, 2 * power_of_two * sizeof(int)>>>(
-      d_out, d_in, length, power_of_two);
+      output, input, length, power_of_two);
 }
 
-void scan_large(int *d_out, const int *d_in, int length);
-void scan_equal(int *d_out, const int *d_in, int length) {
-  const int blocks = length / ELEMENTS_PER_BLOCK;
-  const int sharedMemSize = ELEMENTS_PER_BLOCK * sizeof(int);
+void scan_large(int *output, const int *input, int length);
+void scan_equal(int *output, const int *input, int length) {
+  const int blocks = length / block_elems;
+  const int sharedMemSize = block_elems * sizeof(int);
 
   int *d_sums, *d_incr;
   cudaMalloc((void **)&d_sums, blocks * sizeof(int));
   cudaMalloc((void **)&d_incr, blocks * sizeof(int));
 
-  prescan_large<<<blocks, THREADS_PER_BLOCK, 2 * sharedMemSize>>>(
-      d_out, d_in, ELEMENTS_PER_BLOCK, d_sums);
+  prescan_large<<<blocks, block_threads, 2 * sharedMemSize>>>(
+      output, input, block_elems, d_sums);
 
-  const int sumThreads = (blocks + 1) / 2;
-  if (sumThreads > THREADS_PER_BLOCK) {
+  if ((blocks + 1) / 2 > block_threads) {
     scan_large(d_incr, d_sums, blocks);
   } else {
     scan_small(d_incr, d_sums, blocks);
   }
-
-  add<<<blocks, ELEMENTS_PER_BLOCK>>>(d_out, ELEMENTS_PER_BLOCK, d_incr);
+  add<<<blocks, block_elems>>>(output, block_elems, d_incr);
 
   cudaFree(d_sums);
   cudaFree(d_incr);
 }
 
-void scan_large(int *d_out, const int *d_in, int length) {
-  int remainder = length % (ELEMENTS_PER_BLOCK);
-  if (remainder == 0) {
-    scan_equal(d_out, d_in, length);
-  } else {
-    int even_length = length - remainder;
-    scan_equal(d_out, d_in, even_length);
-    scan_small(&(d_out[even_length]), &(d_in[even_length]), remainder);
-    // add the result of the last element to the remainder part
-    add<<<1, remainder>>>(&(d_out[even_length]), remainder,
-                          &(d_in[even_length - 1]), &(d_out[even_length - 1]));
+void scan_large(int *output, const int *input, int length) {
+  int remainder = length % (block_elems);
+  int even_length = length - remainder;
+  scan_equal(output, input, even_length);
+  if (remainder > 0) {
+    scan_small(&(output[even_length]), &(input[even_length]), remainder);
+    add<<<1, remainder>>>(&(output[even_length]), remainder,
+                          &(input[even_length - 1]),
+                          &(output[even_length - 1]));
   }
 }
 
 void scan(int *output, const int *input, int length) {
-  if (length > ELEMENTS_PER_BLOCK) {
+  if (length > block_elems) {
     scan_large(output, input, length);
   } else {
     scan_small(output, input, length);
