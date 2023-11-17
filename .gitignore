@@ -7,3 +7,4 @@ reference_implementation.d
 reference_implementation.o
 util.d
 util.o
+.vscode
