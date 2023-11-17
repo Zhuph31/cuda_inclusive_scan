@@ -30,7 +30,7 @@ void printSubmissionInfo() {
 int THREADS_PER_BLOCK = 256;
 int ELEMENTS_PER_BLOCK = THREADS_PER_BLOCK * 2;
 
-int getPowerOfTwo(int x) {
+int get_power_of_two(int x) {
   int power = 1;
   while (power < x) {
     power *= 2;
@@ -39,29 +39,29 @@ int getPowerOfTwo(int x) {
 }
 
 __global__ void prescan_arbitrary(int *output, const int *input, int n,
-                                  int powerOfTwo) {
+                                  int power_of_two) {
   extern __shared__ int temp[];
-  int threadID = threadIdx.x;
+  int thread_id = threadIdx.x;
 
-  int ai = threadID;
-  int bi = threadID + (n / 2);
-  int bankOffsetA = CONFLICT_FREE_OFFSET(ai);
-  int bankOffsetB = CONFLICT_FREE_OFFSET(bi);
+  int ai = thread_id;
+  int bi = thread_id + (n / 2);
+  int bank_offset_a = CONFLICT_FREE_OFFSET(ai);
+  int bank_offset_b = CONFLICT_FREE_OFFSET(bi);
 
-  if (threadID < n) {
-    temp[ai + bankOffsetA] = input[ai];
-    temp[bi + bankOffsetB] = input[bi];
+  if (thread_id < n) {
+    temp[ai + bank_offset_a] = input[ai];
+    temp[bi + bank_offset_b] = input[bi];
   } else {
-    temp[ai + bankOffsetA] = 0;
-    temp[bi + bankOffsetB] = 0;
+    temp[ai + bank_offset_a] = 0;
+    temp[bi + bank_offset_b] = 0;
   }
 
   int offset = 1;
-  for (int d = powerOfTwo >> 1; d > 0; d >>= 1) {
+  for (int d = power_of_two >> 1; d > 0; d >>= 1) {
     __syncthreads();
-    if (threadID < d) {
-      int ai = offset * (2 * threadID + 1) - 1;
-      int bi = offset * (2 * threadID + 2) - 1;
+    if (thread_id < d) {
+      int ai = offset * (2 * thread_id + 1) - 1;
+      int bi = offset * (2 * thread_id + 2) - 1;
       ai += CONFLICT_FREE_OFFSET(ai);
       bi += CONFLICT_FREE_OFFSET(bi);
 
@@ -70,16 +70,16 @@ __global__ void prescan_arbitrary(int *output, const int *input, int n,
     offset *= 2;
   }
 
-  if (threadID == 0) {
-    temp[powerOfTwo - 1 + CONFLICT_FREE_OFFSET(powerOfTwo - 1)] = 0;
+  if (thread_id == 0) {
+    temp[power_of_two - 1 + CONFLICT_FREE_OFFSET(power_of_two - 1)] = 0;
   }
 
-  for (int d = 1; d < powerOfTwo; d *= 2) {
+  for (int d = 1; d < power_of_two; d *= 2) {
     offset >>= 1;
     __syncthreads();
-    if (threadID < d) {
-      int ai = offset * (2 * threadID + 1) - 1;
-      int bi = offset * (2 * threadID + 2) - 1;
+    if (thread_id < d) {
+      int ai = offset * (2 * thread_id + 1) - 1;
+      int bi = offset * (2 * thread_id + 2) - 1;
       ai += CONFLICT_FREE_OFFSET(ai);
       bi += CONFLICT_FREE_OFFSET(bi);
 
@@ -90,32 +90,31 @@ __global__ void prescan_arbitrary(int *output, const int *input, int n,
   }
   __syncthreads();
 
-  if (threadID < n) {
-    output[ai] = temp[ai + bankOffsetA];
-    output[bi] = temp[bi + bankOffsetB];
+  if (thread_id < n) {
+    output[ai] = temp[ai + bank_offset_a];
+    output[bi] = temp[bi + bank_offset_b];
   }
 }
 
 __global__ void prescan_large(int *output, const int *input, int n, int *sums) {
   extern __shared__ int temp[];
+  int block_id = blockIdx.x;
+  int thread_id = threadIdx.x;
+  int block_offset = block_id * n;
 
-  int blockID = blockIdx.x;
-  int threadID = threadIdx.x;
-  int blockOffset = blockID * n;
-
-  int ai = threadID;
-  int bi = threadID + (n / 2);
-  int bankOffsetA = CONFLICT_FREE_OFFSET(ai);
-  int bankOffsetB = CONFLICT_FREE_OFFSET(bi);
-  temp[ai + bankOffsetA] = input[blockOffset + ai];
-  temp[bi + bankOffsetB] = input[blockOffset + bi];
+  int ai = thread_id;
+  int bi = thread_id + (n / 2);
+  int bank_offset_a = CONFLICT_FREE_OFFSET(ai);
+  int bank_offset_b = CONFLICT_FREE_OFFSET(bi);
+  temp[ai + bank_offset_a] = input[block_offset + ai];
+  temp[bi + bank_offset_b] = input[block_offset + bi];
 
   int offset = 1;
   for (int d = n >> 1; d > 0; d >>= 1) {
     __syncthreads();
-    if (threadID < d) {
-      int ai = offset * (2 * threadID + 1) - 1;
-      int bi = offset * (2 * threadID + 2) - 1;
+    if (thread_id < d) {
+      int ai = offset * (2 * thread_id + 1) - 1;
+      int bi = offset * (2 * thread_id + 2) - 1;
       ai += CONFLICT_FREE_OFFSET(ai);
       bi += CONFLICT_FREE_OFFSET(bi);
 
@@ -125,17 +124,17 @@ __global__ void prescan_large(int *output, const int *input, int n, int *sums) {
   }
   __syncthreads();
 
-  if (threadID == 0) {
-    sums[blockID] = temp[n - 1 + CONFLICT_FREE_OFFSET(n - 1)];
+  if (thread_id == 0) {
+    sums[block_id] = temp[n - 1 + CONFLICT_FREE_OFFSET(n - 1)];
     temp[n - 1 + CONFLICT_FREE_OFFSET(n - 1)] = 0;
   }
 
   for (int d = 1; d < n; d *= 2) {
     offset >>= 1;
     __syncthreads();
-    if (threadID < d) {
-      int ai = offset * (2 * threadID + 1) - 1;
-      int bi = offset * (2 * threadID + 2) - 1;
+    if (thread_id < d) {
+      int ai = offset * (2 * thread_id + 1) - 1;
+      int bi = offset * (2 * thread_id + 2) - 1;
       ai += CONFLICT_FREE_OFFSET(ai);
       bi += CONFLICT_FREE_OFFSET(bi);
 
@@ -146,8 +145,8 @@ __global__ void prescan_large(int *output, const int *input, int n, int *sums) {
   }
   __syncthreads();
 
-  output[blockOffset + ai] = temp[ai + bankOffsetA];
-  output[blockOffset + bi] = temp[bi + bankOffsetB];
+  output[block_offset + ai] = temp[ai + bank_offset_a];
+  output[block_offset + bi] = temp[bi + bank_offset_b];
 }
 
 __global__ void add(int *output, int length, const int *n) {
@@ -158,14 +157,14 @@ __global__ void add(int *output, int length, const int *n1, const int *n2) {
   output[blockIdx.x * length + threadIdx.x] += n1[blockIdx.x] + n2[blockIdx.x];
 }
 
-void scanSmall(int *d_out, const int *d_in, int length) {
-  int powerOfTwo = getPowerOfTwo(length);
-  prescan_arbitrary<<<1, (length + 1) / 2, 2 * powerOfTwo * sizeof(int)>>>(
-      d_out, d_in, length, powerOfTwo);
+void scan_small(int *d_out, const int *d_in, int length) {
+  int power_of_two = get_power_of_two(length);
+  prescan_arbitrary<<<1, (length + 1) / 2, 2 * power_of_two * sizeof(int)>>>(
+      d_out, d_in, length, power_of_two);
 }
 
-void scanLarge(int *d_out, const int *d_in, int length);
-void scanEqual(int *d_out, const int *d_in, int length) {
+void scan_large(int *d_out, const int *d_in, int length);
+void scan_equal(int *d_out, const int *d_in, int length) {
   const int blocks = length / ELEMENTS_PER_BLOCK;
   const int sharedMemSize = ELEMENTS_PER_BLOCK * sizeof(int);
 
@@ -178,9 +177,9 @@ void scanEqual(int *d_out, const int *d_in, int length) {
 
   const int sumThreads = (blocks + 1) / 2;
   if (sumThreads > THREADS_PER_BLOCK) {
-    scanLarge(d_incr, d_sums, blocks);
+    scan_large(d_incr, d_sums, blocks);
   } else {
-    scanSmall(d_incr, d_sums, blocks);
+    scan_small(d_incr, d_sums, blocks);
   }
 
   add<<<blocks, ELEMENTS_PER_BLOCK>>>(d_out, ELEMENTS_PER_BLOCK, d_incr);
@@ -189,25 +188,25 @@ void scanEqual(int *d_out, const int *d_in, int length) {
   cudaFree(d_incr);
 }
 
-void scanLarge(int *d_out, const int *d_in, int length) {
+void scan_large(int *d_out, const int *d_in, int length) {
   int remainder = length % (ELEMENTS_PER_BLOCK);
   if (remainder == 0) {
-    scanEqual(d_out, d_in, length);
+    scan_equal(d_out, d_in, length);
   } else {
-    int evenLength = length - remainder;
-    scanEqual(d_out, d_in, evenLength);
-    scanSmall(&(d_out[evenLength]), &(d_in[evenLength]), remainder);
+    int even_length = length - remainder;
+    scan_equal(d_out, d_in, even_length);
+    scan_small(&(d_out[even_length]), &(d_in[even_length]), remainder);
     // add the result of the last element to the remainder part
-    add<<<1, remainder>>>(&(d_out[evenLength]), remainder,
-                          &(d_in[evenLength - 1]), &(d_out[evenLength - 1]));
+    add<<<1, remainder>>>(&(d_out[even_length]), remainder,
+                          &(d_in[even_length - 1]), &(d_out[even_length - 1]));
   }
 }
 
 void scan(int *output, const int *input, int length) {
   if (length > ELEMENTS_PER_BLOCK) {
-    scanLarge(output, input, length);
+    scan_large(output, input, length);
   } else {
-    scanSmall(output, input, length);
+    scan_small(output, input, length);
   }
 }
 
