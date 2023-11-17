@@ -23,11 +23,11 @@ void printSubmissionInfo() {
   printf("\tstudent_student_number: %s\n", student_student_number);
 }
 
-#define SHARED_MEMORY_BANKS 32
-#define LOG_MEM_BANKS 5
-#define CONFLICT_FREE_OFFSET(n) ((n) >> LOG_MEM_BANKS)
+#define NUM_BANKS 32
+#define LOG_NUM_BANKS 5
+#define CONFLICT_FREE_OFFSET(n) ((n) >> LOG_NUM_BANKS)
 
-int nextPowerOfTwo(int x) {
+int getPowerOfTwo(int x) {
   int power = 1;
   while (power < x) {
     power *= 2;
@@ -35,9 +35,9 @@ int nextPowerOfTwo(int x) {
   return power;
 }
 
-__global__ void prescan_arbitrary(int *output, int *input, int n,
+__global__ void prescan_arbitrary(int *output, const int *input, int n,
                                   int powerOfTwo) {
-  extern __shared__ int temp[]; // allocated on invocation
+  extern __shared__ int temp[];
   int threadID = threadIdx.x;
 
   int ai = threadID;
@@ -54,9 +54,7 @@ __global__ void prescan_arbitrary(int *output, int *input, int n,
   }
 
   int offset = 1;
-  for (int d = powerOfTwo >> 1; d > 0;
-       d >>= 1) // build sum in place up the tree
-  {
+  for (int d = powerOfTwo >> 1; d > 0; d >>= 1) {
     __syncthreads();
     if (threadID < d) {
       int ai = offset * (2 * threadID + 1) - 1;
@@ -70,12 +68,10 @@ __global__ void prescan_arbitrary(int *output, int *input, int n,
   }
 
   if (threadID == 0) {
-    temp[powerOfTwo - 1 + CONFLICT_FREE_OFFSET(powerOfTwo - 1)] =
-        0; // clear the last element
+    temp[powerOfTwo - 1 + CONFLICT_FREE_OFFSET(powerOfTwo - 1)] = 0;
   }
 
-  for (int d = 1; d < powerOfTwo; d *= 2) // traverse down tree & build scan
-  {
+  for (int d = 1; d < powerOfTwo; d *= 2) {
     offset >>= 1;
     __syncthreads();
     if (threadID < d) {
@@ -97,7 +93,7 @@ __global__ void prescan_arbitrary(int *output, int *input, int n,
   }
 }
 
-__global__ void prescan_large(int *output, int *input, int n, int *sums) {
+__global__ void prescan_large(int *output, const int *input, int n, int *sums) {
   extern __shared__ int temp[];
 
   int blockID = blockIdx.x;
@@ -112,8 +108,7 @@ __global__ void prescan_large(int *output, int *input, int n, int *sums) {
   temp[bi + bankOffsetB] = input[blockOffset + bi];
 
   int offset = 1;
-  for (int d = n >> 1; d > 0; d >>= 1) // build sum in place up the tree
-  {
+  for (int d = n >> 1; d > 0; d >>= 1) {
     __syncthreads();
     if (threadID < d) {
       int ai = offset * (2 * threadID + 1) - 1;
@@ -132,8 +127,7 @@ __global__ void prescan_large(int *output, int *input, int n, int *sums) {
     temp[n - 1 + CONFLICT_FREE_OFFSET(n - 1)] = 0;
   }
 
-  for (int d = 1; d < n; d *= 2) // traverse down tree & build scan
-  {
+  for (int d = 1; d < n; d *= 2) {
     offset >>= 1;
     __syncthreads();
     if (threadID < d) {
@@ -153,7 +147,7 @@ __global__ void prescan_large(int *output, int *input, int n, int *sums) {
   output[blockOffset + bi] = temp[bi + bankOffsetB];
 }
 
-__global__ void add(int *output, int length, int *n) {
+__global__ void add(int *output, int length, const int *n) {
   int blockID = blockIdx.x;
   int threadID = threadIdx.x;
   int blockOffset = blockID * length;
@@ -161,7 +155,7 @@ __global__ void add(int *output, int length, int *n) {
   output[blockOffset + threadID] += n[blockID];
 }
 
-__global__ void add(int *output, int length, int *n1, int *n2) {
+__global__ void add(int *output, int length, const int *n1, const int *n2) {
   int blockID = blockIdx.x;
   int threadID = threadIdx.x;
   int blockOffset = blockID * length;
@@ -172,11 +166,11 @@ __global__ void add(int *output, int length, int *n1, int *n2) {
 int THREADS_PER_BLOCK = 256;
 int ELEMENTS_PER_BLOCK = THREADS_PER_BLOCK * 2;
 
-void scanLargeDeviceArray(int *output, int *input, int length);
-void scanSmallDeviceArray(int *d_out, int *d_in, int length);
-void scanLargeEvenDeviceArray(int *output, int *input, int length);
+void scanLargeDeviceArray(int *output, const int *input, int length);
+void scanSmallDeviceArray(int *d_out, const int *d_in, int length);
+void scanLargeEvenDeviceArray(int *output, const int *input, int length);
 
-void scan(int *output, int *input, int length) {
+void scan(int *output, const int *input, int length) {
   if (length > ELEMENTS_PER_BLOCK) {
     scanLargeDeviceArray(output, input, length);
   } else {
@@ -184,7 +178,7 @@ void scan(int *output, int *input, int length) {
   }
 }
 
-void scanLargeDeviceArray(int *d_out, int *d_in, int length) {
+void scanLargeDeviceArray(int *d_out, const int *d_in, int length) {
   int remainder = length % (ELEMENTS_PER_BLOCK);
   if (remainder == 0) {
     scanLargeEvenDeviceArray(d_out, d_in, length);
@@ -205,14 +199,14 @@ void scanLargeDeviceArray(int *d_out, int *d_in, int length) {
   }
 }
 
-void scanSmallDeviceArray(int *d_out, int *d_in, int length) {
-  int powerOfTwo = nextPowerOfTwo(length);
+void scanSmallDeviceArray(int *d_out, const int *d_in, int length) {
+  int powerOfTwo = getPowerOfTwo(length);
 
   prescan_arbitrary<<<1, (length + 1) / 2, 2 * powerOfTwo * sizeof(int)>>>(
       d_out, d_in, length, powerOfTwo);
 }
 
-void scanLargeEvenDeviceArray(int *d_out, int *d_in, int length) {
+void scanLargeEvenDeviceArray(int *d_out, const int *d_in, int length) {
   const int blocks = length / ELEMENTS_PER_BLOCK;
   const int sharedMemArraySize = ELEMENTS_PER_BLOCK * sizeof(int);
 
@@ -249,6 +243,5 @@ void scanLargeEvenDeviceArray(int *d_out, int *d_in, int length) {
  * @param size: number of elements in the input array
  */
 void implementation(const int32_t *d_input, int32_t *d_output, size_t size) {
-  int32_t *input = const_cast<int32_t *>(d_input);
-  scan(d_output, input, size);
+  scan(d_output, d_input, size);
 }
