@@ -40,7 +40,7 @@ int get_power_of_two(int x) {
 }
 
 __global__ void prescan_arbitrary(int *output, const int *input, int n,
-                                  int power_of_two) {
+                                  int power_of_two, bool inclusive) {
   extern __shared__ int temp[];
   int thread_id = threadIdx.x;
 
@@ -72,9 +72,12 @@ __global__ void prescan_arbitrary(int *output, const int *input, int n,
   }
 
   if (thread_id == 0) {
-    // instead of 0, set as corresponding value in input to make the result
-    // inclusive
-    int target_val = power_of_two - 1 < n ? input[power_of_two - 1] : 0;
+    int target_val = 0;
+    if (inclusive) {
+      // in inclusive mode, instead of 0, set as corresponding value in input to
+      // make the result inclusive
+      target_val = power_of_two - 1 < n ? input[power_of_two - 1] : 0;
+    }
     temp[power_of_two - 1 + CONFLICT_FREE_OFFSET(power_of_two - 1)] =
         target_val;
   }
@@ -89,12 +92,16 @@ __global__ void prescan_arbitrary(int *output, const int *input, int n,
       ai += CONFLICT_FREE_OFFSET(ai);
       bi += CONFLICT_FREE_OFFSET(bi);
 
-      // when assigning bi to ai, first minus the input value at bi, then add
-      // the input value at ai to make the result inclusive
       int t = temp[ai];
-      int input_ai = ai_no_offset < n ? input[ai_no_offset] : 0;
-      int input_bi = bi_no_offset < n ? input[bi_no_offset] : 0;
-      temp[ai] = temp[bi] - input_bi + input_ai;
+      if (inclusive) {
+        // when assigning bi to ai, first minus the input value at bi, then add
+        // the input value at ai to make the result inclusive
+        int input_ai = ai_no_offset < n ? input[ai_no_offset] : 0;
+        int input_bi = bi_no_offset < n ? input[bi_no_offset] : 0;
+        temp[ai] = temp[bi] - input_bi + input_ai;
+      } else {
+        temp[ai] = temp[bi];
+      }
       temp[bi] += t;
     }
   }
@@ -106,7 +113,8 @@ __global__ void prescan_arbitrary(int *output, const int *input, int n,
   }
 }
 
-__global__ void prescan_large(int *output, const int *input, int n, int *sums) {
+__global__ void prescan_large(int *output, const int *input, int n, int *sums,
+                              bool inclusive) {
   extern __shared__ int temp[];
   int block_id = blockIdx.x;
   int thread_id = threadIdx.x;
@@ -137,9 +145,9 @@ __global__ void prescan_large(int *output, const int *input, int n, int *sums) {
   if (thread_id == 0) {
     sums[block_id] = temp[n - 1 + CONFLICT_FREE_OFFSET(n - 1)];
 
-    // instead of 0, set as corresponding value in input to make the result
-    // inclusive
-    temp[n - 1 + CONFLICT_FREE_OFFSET(n - 1)] = input[n - 1];
+    // in inclusive mode, instead of 0, set as corresponding value in input to
+    // make the result inclusive
+    temp[n - 1 + CONFLICT_FREE_OFFSET(n - 1)] = inclusive ? input[n - 1] : 0;
   }
 
   for (int d = 1; d < n; d *= 2) {
@@ -153,8 +161,12 @@ __global__ void prescan_large(int *output, const int *input, int n, int *sums) {
       bi += CONFLICT_FREE_OFFSET(bi);
 
       int t = temp[ai];
-      int input_ai = input[ai_no_offset], input_bi = input[bi_no_offset];
-      temp[ai] = temp[bi] - input_bi + input_ai;
+      if (inclusive) {
+        int input_ai = input[ai_no_offset], input_bi = input[bi_no_offset];
+        temp[ai] = temp[bi] - input_bi + input_ai;
+      } else {
+        temp[ai] = temp[bi];
+      }
       temp[bi] += t;
     }
   }
