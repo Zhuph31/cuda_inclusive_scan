@@ -28,7 +28,7 @@ void printSubmissionInfo() {
 #define LOG_NUM_BANKS 5
 #define CONFLICT_FREE_OFFSET(n) ((n) >> LOG_NUM_BANKS)
 
-int block_threads = 4;
+int block_threads = 128;
 int block_elems = block_threads * 2;
 
 int get_power_of_two(int x) {
@@ -124,6 +124,10 @@ __global__ void prescan_large(int *output, const int *input, int n, int *sums,
   int bi = thread_id + (n / 2);
   int bank_offset_a = CONFLICT_FREE_OFFSET(ai);
   int bank_offset_b = CONFLICT_FREE_OFFSET(bi);
+
+  // int ai = offset * (2 * thread_id + 1) - 1;
+  // int bi = offset * (2 * thread_id + 2) - 1;
+
   temp[ai + bank_offset_a] = input[block_offset + ai];
   temp[bi + bank_offset_b] = input[block_offset + bi];
 
@@ -147,7 +151,8 @@ __global__ void prescan_large(int *output, const int *input, int n, int *sums,
 
     // in inclusive mode, instead of 0, set as corresponding value in input to
     // make the result inclusive
-    temp[n - 1 + CONFLICT_FREE_OFFSET(n - 1)] = is_inclusive ? input[n - 1] : 0;
+    temp[n - 1 + CONFLICT_FREE_OFFSET(n - 1)] =
+        is_inclusive ? input[block_offset + n - 1] : 0;
   }
 
   for (int d = 1; d < n; d *= 2) {
@@ -162,7 +167,8 @@ __global__ void prescan_large(int *output, const int *input, int n, int *sums,
 
       int t = temp[ai];
       if (is_inclusive) {
-        int input_ai = input[ai_no_offset], input_bi = input[bi_no_offset];
+        int input_ai = input[block_offset + ai_no_offset],
+            input_bi = input[block_offset + bi_no_offset];
         temp[ai] = temp[bi] - input_bi + input_ai;
       } else {
         temp[ai] = temp[bi];
@@ -230,6 +236,13 @@ void scan_equal(int *output, const int *input, int length, bool is_inclusive) {
   prescan_large<<<blocks, block_threads, 2 * sharedMemSize>>>(
       output, input, block_elems, sums, is_inclusive);
 
+  // int32_t h_array[blocks];
+  // cudaMemcpy(h_array, sums, blocks * sizeof(int32_t),
+  // cudaMemcpyDeviceToHost); printf("sum:"); for (int i = 0; i < blocks; ++i) {
+  //   printf("%d,", h_array[0]);
+  // }
+  // printf("\n");
+
   // always scan incr in an exclusive mode
   if ((blocks + 1) / 2 > block_threads) {
     scan_large(incr, sums, blocks, false);
@@ -237,16 +250,18 @@ void scan_equal(int *output, const int *input, int length, bool is_inclusive) {
     scan_small(incr, sums, blocks, false);
   }
 
-  // int32_t h_array[blocks];
-  // cudaMemcpy(h_array, sums, blocks * sizeof(int32_t),
-  // cudaMemcpyDeviceToHost); printf("sum:%d\n", h_array[0]);
   // cudaMemcpy(h_array, incr, blocks * sizeof(int32_t),
   // cudaMemcpyDeviceToHost); printf("incr:%d\n", h_array[0]);
 
-  // int32_t h_output[8];
-  // cudaMemcpy(h_output, output, 8 * sizeof(int32_t), cudaMemcpyDeviceToHost);
-  // for (int i = 0; i < 8; ++i) {
+  // int32_t h_output[length];
+  // cudaMemcpy(h_output, output, length * sizeof(int32_t),
+  //            cudaMemcpyDeviceToHost);
+  // printf("output before adding incr:\n");
+  // for (int i = 0; i < length; ++i) {
   //   printf("%d,", h_output[i]);
+  //   if ((i + 1) % block_elems == 0) {
+  //     printf("\n");
+  //   }
   // }
   // printf("\n");
 
@@ -261,6 +276,7 @@ void scan_large(int *output, const int *input, int length, bool is_inclusive) {
   int even_length = length - remainder;
   scan_equal(output, input, even_length, is_inclusive);
   if (remainder > 0) {
+    // printf("remainder yes\n");
     scan_small(&(output[even_length]), &(input[even_length]), remainder,
                is_inclusive);
 
@@ -277,6 +293,8 @@ void scan_large(int *output, const int *input, int length, bool is_inclusive) {
       add<<<1, remainder>>>(&(output[even_length]), &(input[even_length - 1]),
                             &(output[even_length - 1]));
     }
+  } else {
+    // printf("no remainder\n");
   }
 }
 
