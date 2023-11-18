@@ -192,32 +192,6 @@ __global__ void add(int *output, const int *n1, const int *n2) {
   output[threadIdx.x] += *n1 + *n2;
 }
 
-__global__ void exclusive_to_inclusive(int *output, int block_threads,
-                                       int length, const int *input) {
-  extern __shared__ int temp[];
-
-  int thread_id = threadIdx.x;
-  int pos = thread_id;
-  // printf("pos:%d, length:%d\n", pos, length);
-  while (pos < length) {
-    temp[pos] = output[pos];
-    pos += block_threads;
-  }
-
-  pos = thread_id;
-  __syncthreads();
-
-  while (pos < length) {
-    if (pos < length - 1) {
-      output[pos] = temp[pos + 1];
-    }
-    if (pos == length - 1) {
-      output[pos] = temp[pos] + input[pos];
-    }
-    pos += block_threads;
-  }
-}
-
 void scan_small(int *output, const int *input, int length, bool is_inclusive) {
   int power_of_two = get_power_of_two(length);
   prescan_arbitrary<<<1, (length + 1) / 2, 2 * power_of_two * sizeof(int)>>>(
@@ -236,35 +210,12 @@ void scan_equal(int *output, const int *input, int length, bool is_inclusive) {
   prescan_large<<<blocks, block_threads, 2 * sharedMemSize>>>(
       output, input, block_elems, sums, is_inclusive);
 
-  // int32_t h_array[blocks];
-  // cudaMemcpy(h_array, sums, blocks * sizeof(int32_t),
-  // cudaMemcpyDeviceToHost); printf("sum:"); for (int i = 0; i < blocks; ++i) {
-  //   printf("%d,", h_array[0]);
-  // }
-  // printf("\n");
-
   // always scan incr in an exclusive mode
   if ((blocks + 1) / 2 > block_threads) {
     scan_large(incr, sums, blocks, false);
   } else {
     scan_small(incr, sums, blocks, false);
   }
-
-  // cudaMemcpy(h_array, incr, blocks * sizeof(int32_t),
-  // cudaMemcpyDeviceToHost); printf("incr:%d\n", h_array[0]);
-
-  // int32_t h_output[length];
-  // cudaMemcpy(h_output, output, length * sizeof(int32_t),
-  //            cudaMemcpyDeviceToHost);
-  // printf("output before adding incr:\n");
-  // for (int i = 0; i < length; ++i) {
-  //   printf("%d,", h_output[i]);
-  //   if ((i + 1) % block_elems == 0) {
-  //     printf("\n");
-  //   }
-  // }
-  // printf("\n");
-
   add<<<blocks, block_elems>>>(output, block_elems, incr);
 
   cudaFree(sums);
@@ -276,14 +227,8 @@ void scan_large(int *output, const int *input, int length, bool is_inclusive) {
   int even_length = length - remainder;
   scan_equal(output, input, even_length, is_inclusive);
   if (remainder > 0) {
-    // printf("remainder yes\n");
     scan_small(&(output[even_length]), &(input[even_length]), remainder,
                is_inclusive);
-
-    // int32_t h_array[1];
-    // cudaMemcpy(h_array, &(output[even_length]), sizeof(int32_t),
-    //            cudaMemcpyDeviceToHost);
-    // printf("small:%d\n", h_array[0]);
 
     if (is_inclusive) {
       add<<<1, remainder>>>(&(output[even_length]), &(output[even_length - 1]));
@@ -293,18 +238,10 @@ void scan_large(int *output, const int *input, int length, bool is_inclusive) {
       add<<<1, remainder>>>(&(output[even_length]), &(input[even_length - 1]),
                             &(output[even_length - 1]));
     }
-  } else {
-    // printf("no remainder\n");
   }
 }
 
-void inclusive_scan(int *output, const int *input, int length) {
-  if (length > block_elems) {
-    scan_large(output, input, length, true);
-  } else {
-    scan_small(output, input, length, true);
-  }
-}
+void inclusive_scan(int *output, const int *input, int length) {}
 
 /**
  * Implement your CUDA inclusive scan here. Feel free to add helper functions,
@@ -318,12 +255,9 @@ void inclusive_scan(int *output, const int *input, int length) {
  */
 
 void implementation(const int32_t *d_input, int32_t *d_output, size_t size) {
-  inclusive_scan(d_output, d_input, size);
-  // int sharedMemoryBytes = size * sizeof(int32_t);
-  // cudaFuncSetAttribute(exclusive_to_inclusive,
-  //                      cudaFuncAttributeMaxDynamicSharedMemorySize,
-  //                      sharedMemoryBytes);
-  // exclusive_to_inclusive<<<1, 512, size * sizeof(int32_t)>>>(d_output, 512,
-  //                                                            size, d_input);
-  // cudaDeviceSynchronize();
+  if (size > block_elems) {
+    scan_large(d_output, d_input, size, true);
+  } else {
+    scan_small(d_output, d_input, size, true);
+  }
 }
