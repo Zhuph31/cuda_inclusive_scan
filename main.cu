@@ -63,8 +63,8 @@ int main(int argc, char *argv[]) {
          "**********************************\n");
 
   /* generate input */
-  // constexpr size_t input_size = 100000007u;
-  constexpr size_t input_size = 25345;
+  constexpr size_t input_size = 100000007u;
+  // constexpr size_t input_size = 1813;
   std::vector<int32_t> input(input_size);
   std::vector<int32_t> reference_output(input_size);
   std::vector<int32_t> student_output(input_size);

@@ -159,28 +159,31 @@ __global__ void add(int *output, const int *n1, const int *n2) {
 }
 
 __global__ void exclusive_to_inclusive(int *output, int block_threads,
-                                       int length, const int *input) {
+                                       int offset, int length,
+                                       const int *input) {
   extern __shared__ int temp[];
 
   int thread_id = threadIdx.x;
-  int pos = thread_id;
-  // printf("pos:%d, length:%d\n", pos, length);
-  while (pos < length) {
-    temp[pos] = output[pos];
-    pos += block_threads;
+  int pos = thread_id + offset;
+  int no_offset_pos = thread_id;
+  int end = offset + block_threads;
+  // printf("offset:%d, pos:%d, end:%d, length:%d\n", offset, pos, end, length);
+  if (pos >= end || pos >= length) {
+    return;
   }
 
-  pos = thread_id;
+  // printf("should copy %d\n", pos);
+  temp[no_offset_pos] = output[pos];
+  // printf("copy %d\n", pos);
   __syncthreads();
 
-  while (pos < length) {
+  if (pos < offset + block_threads - 1) {
     if (pos < length - 1) {
-      output[pos] = temp[pos + 1];
+      output[pos] = temp[no_offset_pos + 1];
     }
     if (pos == length - 1) {
-      output[pos] = temp[pos] + input[pos];
+      output[pos] = temp[no_offset_pos] + input[pos];
     }
-    pos += block_threads;
   }
 }
 
@@ -244,11 +247,18 @@ void exclusive_scan(int *output, const int *input, int length) {
 
 void implementation(const int32_t *d_input, int32_t *d_output, size_t size) {
   exclusive_scan(d_output, d_input, size);
-  int sharedMemoryBytes = size * sizeof(int32_t);
-  cudaFuncSetAttribute(exclusive_to_inclusive,
-                       cudaFuncAttributeMaxDynamicSharedMemorySize,
-                       sharedMemoryBytes);
-  exclusive_to_inclusive<<<1, 512, size * sizeof(int32_t)>>>(d_output, 512,
-                                                             size, d_input);
+
+  int max_i32_per_block = 512 + 1; // 48kb
+  int sharedMemoryBytes = max_i32_per_block * sizeof(int32_t);
+  // cudaFuncSetAttribute(exclusive_to_inclusive,
+  //                      cudaFuncAttributeMaxDynamicSharedMemorySize,
+  //                      sharedMemoryBytes);
+  int offset = 0;
+  int trans_block_threads = 512 + 1;
+  while (offset < size) {
+    exclusive_to_inclusive<<<1, trans_block_threads, sharedMemoryBytes>>>(
+        d_output, trans_block_threads, offset, size, d_input);
+    offset += 512;
+  }
   cudaDeviceSynchronize();
 }
