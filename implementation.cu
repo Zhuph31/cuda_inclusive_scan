@@ -180,6 +180,8 @@ __global__ void add(int *output, int block_elems, const int *n) {
   output[blockIdx.x * block_elems + threadIdx.x] += n[blockIdx.x];
 }
 
+__global__ void add(int *output, const int *n1) { output[threadIdx.x] += *n1; }
+
 __global__ void add(int *output, const int *n1, const int *n2) {
   output[threadIdx.x] += *n1 + *n2;
 }
@@ -235,18 +237,18 @@ void scan_equal(int *output, const int *input, int length, bool is_inclusive) {
     scan_small(incr, sums, blocks, false);
   }
 
-  int32_t h_array[blocks]; // 主机上的数组
-  cudaMemcpy(h_array, sums, blocks * sizeof(int32_t), cudaMemcpyDeviceToHost);
-  printf("sum:%d\n", h_array[0]);
-  cudaMemcpy(h_array, incr, blocks * sizeof(int32_t), cudaMemcpyDeviceToHost);
-  printf("incr:%d\n", h_array[0]);
+  // int32_t h_array[blocks];
+  // cudaMemcpy(h_array, sums, blocks * sizeof(int32_t),
+  // cudaMemcpyDeviceToHost); printf("sum:%d\n", h_array[0]);
+  // cudaMemcpy(h_array, incr, blocks * sizeof(int32_t),
+  // cudaMemcpyDeviceToHost); printf("incr:%d\n", h_array[0]);
 
-  int32_t h_output[8];
-  cudaMemcpy(h_output, output, 8 * sizeof(int32_t), cudaMemcpyDeviceToHost);
-  for (int i = 0; i < 8; ++i) {
-    printf("%d,", h_output[i]);
-  }
-  printf("\n");
+  // int32_t h_output[8];
+  // cudaMemcpy(h_output, output, 8 * sizeof(int32_t), cudaMemcpyDeviceToHost);
+  // for (int i = 0; i < 8; ++i) {
+  //   printf("%d,", h_output[i]);
+  // }
+  // printf("\n");
 
   add<<<blocks, block_elems>>>(output, block_elems, incr);
 
@@ -261,8 +263,20 @@ void scan_large(int *output, const int *input, int length, bool is_inclusive) {
   if (remainder > 0) {
     scan_small(&(output[even_length]), &(input[even_length]), remainder,
                is_inclusive);
-    add<<<1, remainder>>>(&(output[even_length]), &(input[even_length - 1]),
-                          &(output[even_length - 1]));
+
+    // int32_t h_array[1];
+    // cudaMemcpy(h_array, &(output[even_length]), sizeof(int32_t),
+    //            cudaMemcpyDeviceToHost);
+    // printf("small:%d\n", h_array[0]);
+
+    if (is_inclusive) {
+      add<<<1, remainder>>>(&(output[even_length]), &(output[even_length - 1]));
+    } else {
+      // input[even_length-1] is needed in exclusive mode to make the former
+      // result inclusive
+      add<<<1, remainder>>>(&(output[even_length]), &(input[even_length - 1]),
+                            &(output[even_length - 1]));
+    }
   }
 }
 
