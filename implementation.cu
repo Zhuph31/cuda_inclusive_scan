@@ -28,7 +28,7 @@ void printSubmissionInfo() {
 #define LOG_NUM_BANKS 5
 #define CONFLICT_FREE_OFFSET(n) ((n) >> LOG_NUM_BANKS)
 
-int block_threads = 256;
+int block_threads = 4;
 int block_elems = block_threads * 2;
 
 int get_power_of_two(int x) {
@@ -72,7 +72,11 @@ __global__ void prescan_arbitrary(int *output, const int *input, int n,
   }
 
   if (thread_id == 0) {
-    temp[power_of_two - 1 + CONFLICT_FREE_OFFSET(power_of_two - 1)] = 0;
+    // instead of 0, set as corresponding value in input to make the result
+    // inclusive
+    int target_val = power_of_two - 1 < n ? input[power_of_two - 1] : 0;
+    temp[power_of_two - 1 + CONFLICT_FREE_OFFSET(power_of_two - 1)] =
+        target_val;
   }
 
   for (int d = 1; d < power_of_two; d *= 2) {
@@ -81,11 +85,16 @@ __global__ void prescan_arbitrary(int *output, const int *input, int n,
     if (thread_id < d) {
       int ai = offset * (2 * thread_id + 1) - 1;
       int bi = offset * (2 * thread_id + 2) - 1;
+      int ai_no_offset = ai, bi_no_offset = bi;
       ai += CONFLICT_FREE_OFFSET(ai);
       bi += CONFLICT_FREE_OFFSET(bi);
 
+      // when assigning bi to ai, first minus the input value at bi, then add
+      // the input value at ai to make the result inclusive
       int t = temp[ai];
-      temp[ai] = temp[bi];
+      int input_ai = ai_no_offset < n ? input[ai_no_offset] : 0;
+      int input_bi = bi_no_offset < n ? input[bi_no_offset] : 0;
+      temp[ai] = temp[bi] - input_bi + input_ai;
       temp[bi] += t;
     }
   }
@@ -127,7 +136,10 @@ __global__ void prescan_large(int *output, const int *input, int n, int *sums) {
 
   if (thread_id == 0) {
     sums[block_id] = temp[n - 1 + CONFLICT_FREE_OFFSET(n - 1)];
-    temp[n - 1 + CONFLICT_FREE_OFFSET(n - 1)] = 0;
+
+    // instead of 0, set as corresponding value in input to make the result
+    // inclusive
+    temp[n - 1 + CONFLICT_FREE_OFFSET(n - 1)] = input[n - 1];
   }
 
   for (int d = 1; d < n; d *= 2) {
@@ -136,11 +148,13 @@ __global__ void prescan_large(int *output, const int *input, int n, int *sums) {
     if (thread_id < d) {
       int ai = offset * (2 * thread_id + 1) - 1;
       int bi = offset * (2 * thread_id + 2) - 1;
+      int ai_no_offset = ai, bi_no_offset = bi;
       ai += CONFLICT_FREE_OFFSET(ai);
       bi += CONFLICT_FREE_OFFSET(bi);
 
       int t = temp[ai];
-      temp[ai] = temp[bi];
+      int input_ai = input[ai_no_offset], input_bi = input[bi_no_offset];
+      temp[ai] = temp[bi] - input_bi + input_ai;
       temp[bi] += t;
     }
   }
@@ -206,6 +220,21 @@ void scan_equal(int *output, const int *input, int length) {
   } else {
     scan_small(incr, sums, blocks);
   }
+
+  int32_t h_array[blocks]; // 主机上的数组
+  cudaMemcpy(h_array, sums, blocks * sizeof(int32_t), cudaMemcpyDeviceToHost);
+  printf("sum:%d\n", h_array[0]);
+  cudaMemcpy(h_array, incr, blocks * sizeof(int32_t), cudaMemcpyDeviceToHost);
+  printf("incr:%d\n", h_array[0]);
+
+  int32_t h_output[8];
+  cudaMemcpy(h_output, output, 8 * sizeof(int32_t), cudaMemcpyDeviceToHost);
+  for (int i = 0; i < 8; ++i) {
+    printf("%d,", h_output[i]);
+  }
+  printf("\n");
+
+  // ! incr needs to be exclusive
   add<<<blocks, block_elems>>>(output, block_elems, incr);
 
   cudaFree(sums);
@@ -244,11 +273,11 @@ void exclusive_scan(int *output, const int *input, int length) {
 
 void implementation(const int32_t *d_input, int32_t *d_output, size_t size) {
   exclusive_scan(d_output, d_input, size);
-  int sharedMemoryBytes = size * sizeof(int32_t);
-  cudaFuncSetAttribute(exclusive_to_inclusive,
-                       cudaFuncAttributeMaxDynamicSharedMemorySize,
-                       sharedMemoryBytes);
-  exclusive_to_inclusive<<<1, 512, size * sizeof(int32_t)>>>(d_output, 512,
-                                                             size, d_input);
-  cudaDeviceSynchronize();
+  // int sharedMemoryBytes = size * sizeof(int32_t);
+  // cudaFuncSetAttribute(exclusive_to_inclusive,
+  //                      cudaFuncAttributeMaxDynamicSharedMemorySize,
+  //                      sharedMemoryBytes);
+  // exclusive_to_inclusive<<<1, 512, size * sizeof(int32_t)>>>(d_output, 512,
+  //                                                            size, d_input);
+  // cudaDeviceSynchronize();
 }
