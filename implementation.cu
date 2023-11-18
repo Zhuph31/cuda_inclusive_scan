@@ -164,6 +164,7 @@ __global__ void exclusive_to_inclusive(int *output, int block_threads,
 
   int thread_id = threadIdx.x;
   int pos = thread_id;
+  // printf("pos:%d, length:%d\n", pos, length);
   while (pos < length) {
     temp[pos] = output[pos];
     pos += block_threads;
@@ -243,6 +244,11 @@ void exclusive_scan(int *output, const int *input, int length) {
 
 void implementation(const int32_t *d_input, int32_t *d_output, size_t size) {
   exclusive_scan(d_output, d_input, size);
-  exclusive_to_inclusive<<<1, 128, size * sizeof(int32_t)>>>(d_output, 128,
+  int sharedMemoryBytes = size * sizeof(int32_t);
+  cudaFuncSetAttribute(exclusive_to_inclusive,
+                       cudaFuncAttributeMaxDynamicSharedMemorySize,
+                       sharedMemoryBytes);
+  exclusive_to_inclusive<<<1, 512, size * sizeof(int32_t)>>>(d_output, 512,
                                                              size, d_input);
+  cudaDeviceSynchronize();
 }

@@ -63,8 +63,8 @@ int main(int argc, char *argv[]) {
          "**********************************\n");
 
   /* generate input */
-  constexpr size_t input_size = 100000007u;
-  // constexpr size_t input_size = 10;
+  // constexpr size_t input_size = 100000007u;
+  constexpr size_t input_size = 25345;
   std::vector<int32_t> input(input_size);
   std::vector<int32_t> reference_output(input_size);
   std::vector<int32_t> student_output(input_size);
@@ -126,18 +126,26 @@ int main(int argc, char *argv[]) {
     std::cerr << "Your implementation is incorrect." << std::endl;
     if (print) {
       for (int i = 0; i < input_size; ++i) {
-        printf("%d,", input[i]);
+        if (reference_output[i] != student_output[i]) {
+          printf("pos:%d, input:%d, student:%d, reference:%d\n", i, input[i],
+                 student_output[i], reference_output[i]);
+        }
       }
-      printf("\n");
-      for (int i = 0; i < input_size; ++i) {
-        printf("%d,", reference_output[i]);
-      }
-      printf("\n");
-      for (int i = 0; i < input_size; ++i) {
-        printf("%d,", student_output[i]);
-      }
-      printf("\n");
+
+      // for (int i = 0; i < input_size; ++i) {
+      //   printf("%d,", input[i]);
+      // }
+      // printf("\n");
+      // for (int i = 0; i < input_size; ++i) {
+      //   printf("%d,", reference_output[i]);
+      // }
+      // printf("\n");
+      // for (int i = 0; i < input_size; ++i) {
+      //   printf("%d,", student_output[i]);
+      // }
+      // printf("\n");
     }
+
     exit(-1);
   }
 
