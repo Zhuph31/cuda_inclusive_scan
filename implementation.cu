@@ -40,7 +40,7 @@ int get_power_of_two(int x) {
 }
 
 __global__ void prescan_arbitrary(int *output, const int *input, int n,
-                                  int power_of_two, bool inclusive) {
+                                  int power_of_two, bool is_inclusive) {
   extern __shared__ int temp[];
   int thread_id = threadIdx.x;
 
@@ -73,7 +73,7 @@ __global__ void prescan_arbitrary(int *output, const int *input, int n,
 
   if (thread_id == 0) {
     int target_val = 0;
-    if (inclusive) {
+    if (is_inclusive) {
       // in inclusive mode, instead of 0, set as corresponding value in input to
       // make the result inclusive
       target_val = power_of_two - 1 < n ? input[power_of_two - 1] : 0;
@@ -93,7 +93,7 @@ __global__ void prescan_arbitrary(int *output, const int *input, int n,
       bi += CONFLICT_FREE_OFFSET(bi);
 
       int t = temp[ai];
-      if (inclusive) {
+      if (is_inclusive) {
         // when assigning bi to ai, first minus the input value at bi, then add
         // the input value at ai to make the result inclusive
         int input_ai = ai_no_offset < n ? input[ai_no_offset] : 0;
@@ -114,7 +114,7 @@ __global__ void prescan_arbitrary(int *output, const int *input, int n,
 }
 
 __global__ void prescan_large(int *output, const int *input, int n, int *sums,
-                              bool inclusive) {
+                              bool is_inclusive) {
   extern __shared__ int temp[];
   int block_id = blockIdx.x;
   int thread_id = threadIdx.x;
@@ -147,7 +147,7 @@ __global__ void prescan_large(int *output, const int *input, int n, int *sums,
 
     // in inclusive mode, instead of 0, set as corresponding value in input to
     // make the result inclusive
-    temp[n - 1 + CONFLICT_FREE_OFFSET(n - 1)] = inclusive ? input[n - 1] : 0;
+    temp[n - 1 + CONFLICT_FREE_OFFSET(n - 1)] = is_inclusive ? input[n - 1] : 0;
   }
 
   for (int d = 1; d < n; d *= 2) {
@@ -161,7 +161,7 @@ __global__ void prescan_large(int *output, const int *input, int n, int *sums,
       bi += CONFLICT_FREE_OFFSET(bi);
 
       int t = temp[ai];
-      if (inclusive) {
+      if (is_inclusive) {
         int input_ai = input[ai_no_offset], input_bi = input[bi_no_offset];
         temp[ai] = temp[bi] - input_bi + input_ai;
       } else {
@@ -210,14 +210,14 @@ __global__ void exclusive_to_inclusive(int *output, int block_threads,
   }
 }
 
-void scan_small(int *output, const int *input, int length) {
+void scan_small(int *output, const int *input, int length, bool is_inclusive) {
   int power_of_two = get_power_of_two(length);
   prescan_arbitrary<<<1, (length + 1) / 2, 2 * power_of_two * sizeof(int)>>>(
-      output, input, length, power_of_two);
+      output, input, length, power_of_two, is_inclusive);
 }
 
-void scan_large(int *output, const int *input, int length);
-void scan_equal(int *output, const int *input, int length) {
+void scan_large(int *output, const int *input, int length, bool is_inclusive);
+void scan_equal(int *output, const int *input, int length, bool is_inclusive) {
   const int blocks = length / block_elems;
   const int sharedMemSize = block_elems * sizeof(int);
 
@@ -226,11 +226,13 @@ void scan_equal(int *output, const int *input, int length) {
   cudaMalloc((void **)&incr, blocks * sizeof(int));
 
   prescan_large<<<blocks, block_threads, 2 * sharedMemSize>>>(
-      output, input, block_elems, sums);
+      output, input, block_elems, sums, is_inclusive);
+
+  // always scan incr in an exclusive mode
   if ((blocks + 1) / 2 > block_threads) {
-    scan_large(incr, sums, blocks);
+    scan_large(incr, sums, blocks, false);
   } else {
-    scan_small(incr, sums, blocks);
+    scan_small(incr, sums, blocks, false);
   }
 
   int32_t h_array[blocks]; // 主机上的数组
@@ -246,29 +248,29 @@ void scan_equal(int *output, const int *input, int length) {
   }
   printf("\n");
 
-  // ! incr needs to be exclusive
   add<<<blocks, block_elems>>>(output, block_elems, incr);
 
   cudaFree(sums);
   cudaFree(incr);
 }
 
-void scan_large(int *output, const int *input, int length) {
+void scan_large(int *output, const int *input, int length, bool is_inclusive) {
   int remainder = length % (block_elems);
   int even_length = length - remainder;
-  scan_equal(output, input, even_length);
+  scan_equal(output, input, even_length, is_inclusive);
   if (remainder > 0) {
-    scan_small(&(output[even_length]), &(input[even_length]), remainder);
+    scan_small(&(output[even_length]), &(input[even_length]), remainder,
+               is_inclusive);
     add<<<1, remainder>>>(&(output[even_length]), &(input[even_length - 1]),
                           &(output[even_length - 1]));
   }
 }
 
-void exclusive_scan(int *output, const int *input, int length) {
+void inclusive_scan(int *output, const int *input, int length) {
   if (length > block_elems) {
-    scan_large(output, input, length);
+    scan_large(output, input, length, true);
   } else {
-    scan_small(output, input, length);
+    scan_small(output, input, length, true);
   }
 }
 
@@ -284,7 +286,7 @@ void exclusive_scan(int *output, const int *input, int length) {
  */
 
 void implementation(const int32_t *d_input, int32_t *d_output, size_t size) {
-  exclusive_scan(d_output, d_input, size);
+  inclusive_scan(d_output, d_input, size);
   // int sharedMemoryBytes = size * sizeof(int32_t);
   // cudaFuncSetAttribute(exclusive_to_inclusive,
   //                      cudaFuncAttributeMaxDynamicSharedMemorySize,
