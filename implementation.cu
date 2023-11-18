@@ -160,26 +160,23 @@ __global__ void add(int *output, const int *n1, const int *n2) {
 
 __global__ void exclusive_to_inclusive(int *output, int block_threads,
                                        int length, const int *input) {
-
   extern __shared__ int temp[];
 
   int thread_id = threadIdx.x;
-  int block_id = blockIdx.x;
-  // int pos = block_id * block_elem + thread_id;
-
   int pos = thread_id;
   while (pos < length) {
     temp[pos] = output[pos];
     pos += block_threads;
   }
 
-  __syncthreads();
   pos = thread_id;
+  __syncthreads();
 
   while (pos < length) {
-    if (pos > 0) {
-      output[pos - 1] = temp[pos];
-    } else if (pos == length - 1) {
+    if (pos < length - 1) {
+      output[pos] = temp[pos + 1];
+    }
+    if (pos == length - 1) {
       output[pos] = temp[pos] + input[pos];
     }
     pos += block_threads;
@@ -246,6 +243,6 @@ void exclusive_scan(int *output, const int *input, int length) {
 
 void implementation(const int32_t *d_input, int32_t *d_output, size_t size) {
   exclusive_scan(d_output, d_input, size);
-  exclusive_to_inclusive<<<1, block_threads, size * sizeof(int32_t)>>>(
-      d_output, block_threads, size, d_input);
+  exclusive_to_inclusive<<<1, 128, size * sizeof(int32_t)>>>(d_output, 128,
+                                                             size, d_input);
 }
