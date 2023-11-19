@@ -39,8 +39,8 @@ int get_power_of_two(int x) {
   return power;
 }
 
-__global__ void prescan_arbitrary(int *output, const int *input, int n,
-                                  int power_of_two, bool is_inclusive) {
+__global__ void prescan_block(int *output, const int *input, int n,
+                              int power_of_two, bool is_inclusive) {
   extern __shared__ int temp[];
   int thread_id = threadIdx.x;
 
@@ -194,7 +194,7 @@ __global__ void add(int *output, const int *n1, const int *n2) {
 
 void scan_small(int *output, const int *input, int length, bool is_inclusive) {
   int power_of_two = get_power_of_two(length);
-  prescan_arbitrary<<<1, (length + 1) / 2, 2 * power_of_two * sizeof(int)>>>(
+  prescan_block<<<1, (length + 1) / 2, 2 * power_of_two * sizeof(int)>>>(
       output, input, length, power_of_two, is_inclusive);
 }
 
@@ -240,8 +240,6 @@ void scan_large(int *output, const int *input, int length, bool is_inclusive) {
     }
   }
 }
-
-void inclusive_scan(int *output, const int *input, int length) {}
 
 /**
  * Implement your CUDA inclusive scan here. Feel free to add helper functions,
