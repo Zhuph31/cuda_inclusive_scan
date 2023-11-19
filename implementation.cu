@@ -255,4 +255,5 @@ void implementation(const int32_t *d_input, int32_t *d_output, size_t size) {
   } else {
     scan_small(d_output, d_input, size, true);
   }
+  cudaDeviceSynchronize();
 }
