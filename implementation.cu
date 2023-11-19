@@ -125,9 +125,6 @@ __global__ void prescan_large(int *output, const int *input, int n, int *sums,
   int bank_offset_a = CONFLICT_FREE_OFFSET(ai);
   int bank_offset_b = CONFLICT_FREE_OFFSET(bi);
 
-  // int ai = offset * (2 * thread_id + 1) - 1;
-  // int bi = offset * (2 * thread_id + 2) - 1;
-
   temp[ai + bank_offset_a] = input[block_offset + ai];
   temp[bi + bank_offset_b] = input[block_offset + bi];
 
