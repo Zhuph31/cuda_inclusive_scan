@@ -206,6 +206,7 @@ void scan_equal(int *output, const int *input, int length, bool is_inclusive) {
 
   prescan_large<<<blocks, block_threads, 2 * sharedMemSize>>>(
       output, input, block_elems, sums, is_inclusive);
+  cudaDeviceSynchronize();
 
   // always scan incr in an exclusive mode
   if ((blocks + 1) / 2 > block_threads) {
@@ -213,6 +214,7 @@ void scan_equal(int *output, const int *input, int length, bool is_inclusive) {
   } else {
     scan_small(incr, sums, blocks, false);
   }
+  cudaDeviceSynchronize();
   add<<<blocks, block_elems>>>(output, block_elems, incr);
 
   cudaFree(sums);
@@ -226,6 +228,7 @@ void scan_large(int *output, const int *input, int length, bool is_inclusive) {
   if (remainder > 0) {
     scan_small(&(output[even_length]), &(input[even_length]), remainder,
                is_inclusive);
+    cudaDeviceSynchronize();
 
     if (is_inclusive) {
       add<<<1, remainder>>>(&(output[even_length]), &(output[even_length - 1]));
